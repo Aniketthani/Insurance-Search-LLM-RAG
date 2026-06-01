@@ -32,6 +32,8 @@ from src.search_index import (InsuranceHybridSearchIndex, EMBEDDER_OPTIONS, comp
 from src.rag_engine   import (InsuranceRAGEngine, SearchEvaluator,
                                GroqLLM, GROQ_MODELS, OpenAILLM, OPENAI_MODELS)
 from src.sample_docs  import SAMPLE_DOCS, get_sample_queries
+from src.adverse_scanner import (AdverseClauseScanner, ADVERSE_CATEGORIES,
+                                  DocumentAdversityReport, SectionAdversityReport)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # DESIGN SYSTEM — Rich, Readable, Beautiful
@@ -827,6 +829,163 @@ div[data-testid="column"] .stButton > button[kind="primary"],
 .no-ref-box .nr-icon { font-size: 20px; margin-right: 8px; }
 
 /* ══════════════════════════════════════════
+   ADVERSE SCAN TAB
+══════════════════════════════════════════ */
+.adv-hero {
+    background: linear-gradient(135deg, #1C0A00 0%, #3B0D0D 50%, #450A0A 100%);
+    border-radius: 14px;
+    padding: 22px 28px;
+    margin-bottom: 22px;
+    position: relative;
+    overflow: hidden;
+}
+.adv-hero::before {
+    content: '';
+    position: absolute;
+    top: -40px; right: -40px;
+    width: 180px; height: 180px;
+    background: radial-gradient(circle, rgba(220,38,38,0.2) 0%, transparent 70%);
+}
+.adv-hero-title {
+    font-size: 20px; font-weight: 700;
+    color: #FEF2F2 !important; margin: 0 0 4px;
+}
+.adv-hero-sub {
+    font-size: 12px; color: #FCA5A5 !important; margin: 0;
+}
+.adv-score-ring {
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    border: 4px solid;
+    flex-shrink: 0;
+}
+.ring-CRITICAL { border-color: #EF4444; background: rgba(239,68,68,0.12); }
+.ring-HIGH     { border-color: #F97316; background: rgba(249,115,22,0.12); }
+.ring-MEDIUM   { border-color: #EAB308; background: rgba(234,179,8,0.12); }
+.ring-LOW      { border-color: #22C55E; background: rgba(34,197,94,0.12); }
+.ring-CLEAN    { border-color: #6B7280; background: rgba(107,114,128,0.08); }
+.ring-score { font-size: 22px; font-weight: 800; line-height: 1; }
+.ring-label { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
+.score-CRITICAL { color: #EF4444; }
+.score-HIGH     { color: #F97316; }
+.score-MEDIUM   { color: #EAB308; }
+.score-LOW      { color: #22C55E; }
+.score-CLEAN    { color: #6B7280; }
+.adv-stat-row {
+    display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 0;
+}
+.adv-stat {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 8px;
+    padding: 8px 14px; text-align: center;
+}
+.adv-stat-num {
+    font-size: 22px; font-weight: 800; line-height: 1;
+}
+.adv-stat-lbl { font-size: 10px; font-weight: 600; color: #FCA5A5 !important; letter-spacing: 0.5px; }
+.s-CRITICAL { color: #FCA5A5; }
+.s-HIGH     { color: #FDBA74; }
+.s-MEDIUM   { color: #FDE68A; }
+.s-LOW      { color: #86EFAC; }
+.s-CLEAN    { color: #D1D5DB; }
+.exec-summary {
+    background: #FFF7ED;
+    border: 1px solid #FED7AA;
+    border-left: 4px solid #EA580C;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #7C2D12;
+    line-height: 1.7;
+    margin: 16px 0;
+}
+.cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+}
+.cat-card {
+    background: #fff;
+    border: 1px solid #E8E0D0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    border-left: 4px solid;
+}
+.cat-card-top {
+    display: flex; align-items: center;
+    justify-content: space-between; margin-bottom: 4px;
+}
+.cat-name { font-size: 12px; font-weight: 600; color: #1C2B3A; }
+.cat-count {
+    background: #1C2B3A; color: #E2C06A !important;
+    border-radius: 20px; padding: 1px 8px;
+    font-size: 11px; font-weight: 700;
+}
+.cat-desc { font-size: 11px; color: #9C8E7A; }
+.section-adv-card {
+    background: #fff;
+    border: 1px solid #E8E0D0;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+    border-left: 5px solid;
+}
+.sa-header {
+    display: flex; justify-content: space-between;
+    align-items: flex-start; gap: 12px; margin-bottom: 8px;
+}
+.sa-title { font-size: 14px; font-weight: 600; color: #1C2B3A; }
+.sa-meta  { font-size: 12px; color: #9C8E7A; }
+.sa-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.adv-level-pill {
+    border-radius: 20px; padding: 3px 10px;
+    font-size: 11px; font-weight: 700;
+}
+.pill-CRITICAL { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+.pill-HIGH     { background: #FFF7ED; color: #9A3412; border: 1px solid #FED7AA; }
+.pill-MEDIUM   { background: #FFFBEB; color: #92400E; border: 1px solid #FDE68A; }
+.pill-LOW      { background: #F0FDF4; color: #065F46; border: 1px solid #A7F3D0; }
+.pill-CLEAN    { background: #F9FAFB; color: #6B7280; border: 1px solid #E5E7EB; }
+.match-snippet {
+    font-size: 12.5px; color: #374151;
+    line-height: 1.65; margin-top: 8px;
+    background: #FAFAF8;
+    border: 1px solid #E8E0D0;
+    border-radius: 6px;
+    padding: 8px 12px;
+}
+.match-term-highlight {
+    background: #FEF3C7;
+    border-bottom: 2px solid #F59E0B;
+    border-radius: 2px;
+    padding: 0 2px;
+    font-weight: 600;
+}
+.neg-badge {
+    background: #F0FDF4; color: #065F46;
+    border: 1px solid #A7F3D0;
+    border-radius: 4px; padding: 1px 6px;
+    font-size: 10px; font-weight: 600;
+}
+.heatmap-bar {
+    height: 8px; border-radius: 4px;
+    background: linear-gradient(90deg, #22C55E 0%, #EAB308 40%, #EF4444 100%);
+    margin-top: 6px;
+}
+.heatmap-marker {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    position: relative;
+    display: inline-block;
+}
+
+/* ══════════════════════════════════════════
    SCROLLBAR
 ══════════════════════════════════════════ */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -844,6 +1003,7 @@ def init_state():
         engine=None, index=None, indexed_docs=[],
         query_history=[], last_response=None, last_elapsed_ms=0,
         eval_results=None, embedder_type="tfidf",
+        adverse_reports={}, adverse_scan_done=False,
     ).items():
         if k not in st.session_state:
             st.session_state[k] = v
@@ -1399,8 +1559,8 @@ if st.session_state.engine is None:   # show welcome only if no index at all
 # ══════════════════════════════════════════════════════════════════════════════
 # TABS
 # ══════════════════════════════════════════════════════════════════════════════
-tab_search, tab_hist, tab_docs = st.tabs([
-    "  🔍  Search  ", "  🕐  History  ", "  📁  Documents  "
+tab_search, tab_hist, tab_adv, tab_docs = st.tabs([
+    "  🔍  Search  ", "  🕐  History  ", "  🚨  Adverse Scan  ", "  📁  Documents  "
 ])
 # Evaluation tab commented out — re-enable by adding back "  📊  Evaluation  " and tab_eval
 
@@ -1746,6 +1906,298 @@ with tab_hist:
 # ── EVALUATION TAB COMMENTED OUT ─────────────────────────────────────────
 # Uncomment the eval tab in the st.tabs() call above to re-enable
 
+
+# ─────────────────────────────────────────────────────────
+# ADVERSE SCAN TAB
+# ─────────────────────────────────────────────────────────
+with tab_adv:
+
+    def _level_color(level):
+        return {"CRITICAL":"#EF4444","HIGH":"#F97316",
+                "MEDIUM":"#EAB308","LOW":"#22C55E","CLEAN":"#6B7280"}.get(level,"#6B7280")
+
+    def _highlight_terms(text, matches):
+        """Highlight matched adverse terms in snippet text."""
+        result = text
+        # Sort matches by length descending to avoid partial replacements
+        sorted_terms = sorted({m.term for m in matches if not m.negated},
+                               key=len, reverse=True)
+        for term in sorted_terms[:8]:  # limit highlights
+            escaped = re.escape(term)
+            result = re.sub(
+                escaped,
+                f'<span class="match-term-highlight">{term}</span>',
+                result, flags=re.IGNORECASE, count=2)
+        return result
+
+    # Hero header
+    st.markdown("""
+<div class="adv-hero">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:20px">
+    <div>
+      <div class="adv-hero-title">🚨 Adverse Clause Scanner</div>
+      <div class="adv-hero-sub">
+        18 risk categories · 400+ adverse terms · Negation detection ·
+        Section heatmap · Executive summary
+      </div>
+    </div>
+    <div style="font-size:40px;opacity:0.3">⚖️</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+    if not st.session_state.engine:
+        st.info("Build the index first using the sidebar, then return here to scan.")
+        st.stop()
+
+    # ── Controls ─────────────────────────────────────────────────────────────
+    adv_c1, adv_c2, adv_c3 = st.columns([3, 2, 2], gap="medium")
+
+    with adv_c1:
+        _doc_list = ["All indexed documents"] + sorted({
+            d["display_name"] for d in st.session_state.get("indexed_docs", [])
+            if d.get("display_name")
+        })
+        adv_doc_sel = st.selectbox(
+            "Document to scan",
+            _doc_list,
+            key="adv_doc_sel"
+        )
+
+    with adv_c2:
+        _all_cats   = list(ADVERSE_CATEGORIES.keys())
+        adv_cat_sel = st.multiselect(
+            "Risk categories",
+            _all_cats,
+            default=_all_cats,
+            key="adv_cat_sel"
+        )
+
+    with adv_c3:
+        adv_min_level = st.selectbox(
+            "Minimum severity",
+            ["ALL", "LOW", "MEDIUM", "HIGH", "CRITICAL"],
+            index=0,
+            key="adv_min_level"
+        )
+
+    _level_order = {"CLEAN":0,"LOW":1,"MEDIUM":2,"HIGH":3,"CRITICAL":4,"ALL":-1}
+
+    scan_btn = st.button(
+        "🔍 Run Adverse Scan",
+        type="primary",
+        use_container_width=False,
+        key="adv_scan_btn"
+    )
+
+    if scan_btn:
+        _filter = None if adv_doc_sel == "All indexed documents" else adv_doc_sel
+        scanner = AdverseClauseScanner(categories=adv_cat_sel or None)
+
+        with st.spinner("Scanning for adverse clauses…"):
+            reports = scanner.scan_corpus(st.session_state.index, doc_filter=_filter)
+
+        st.session_state.adverse_reports    = {r.display_name: r for r in reports}
+        st.session_state.adverse_scan_done  = True
+
+    # ── Results ───────────────────────────────────────────────────────────────
+    if st.session_state.get("adverse_scan_done") and st.session_state.adverse_reports:
+        reports_list = list(st.session_state.adverse_reports.values())
+
+        # ── Summary strip across all scanned docs ────────────────────────────
+        total_crit = sum(r.critical_count for r in reports_list)
+        total_high = sum(r.high_count     for r in reports_list)
+        total_med  = sum(r.medium_count   for r in reports_list)
+        total_secs = sum(r.total_sections for r in reports_list)
+        avg_score  = sum(r.overall_score  for r in reports_list) / max(len(reports_list),1)
+
+        st.markdown('<div class="section-label">Portfolio overview</div>',
+                    unsafe_allow_html=True)
+        ms1,ms2,ms3,ms4,ms5 = st.columns(5, gap="small")
+        for col, lbl, val, cls in [
+            (ms1,"Documents scanned", len(reports_list), ""),
+            (ms2,"Critical sections",  total_crit, "s-CRITICAL"),
+            (ms3,"High sections",       total_high, "s-HIGH"),
+            (ms4,"Medium sections",     total_med,  "s-MEDIUM"),
+            (ms5,"Avg adversity score", f"{avg_score:.1f}", ""),
+        ]:
+            col.markdown(f"""<div class="metric-card mc-plain" style="padding:12px 14px">
+  <div class="mc-label">{lbl}</div>
+  <div class="mc-value {cls}" style="font-size:22px">{val}</div>
+</div>""", unsafe_allow_html=True)
+
+        st.markdown("")
+
+        # ── Per-document result ───────────────────────────────────────────────
+        for rpt in sorted(reports_list, key=lambda r: r.overall_score, reverse=True):
+            lc = _level_color(rpt.adversity_level)
+            sc = f"{rpt.overall_score:.1f}"
+
+            with st.expander(
+                f"{'🔴' if rpt.adversity_level=='CRITICAL' else '🟠' if rpt.adversity_level=='HIGH' else '🟡' if rpt.adversity_level=='MEDIUM' else '🟢'}  "
+                f"{rpt.display_name}  ·  {rpt.adversity_level}  ·  Score {sc}/100",
+                expanded=(rpt.adversity_level in ("CRITICAL","HIGH"))
+            ):
+                # ── Score ring + stats ────────────────────────────────────────
+                ring_col, stat_col = st.columns([1, 4], gap="medium")
+                with ring_col:
+                    st.markdown(f"""
+<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 0">
+  <div class="adv-score-ring ring-{rpt.adversity_level}">
+    <span class="ring-score score-{rpt.adversity_level}">{sc}</span>
+    <span class="ring-label score-{rpt.adversity_level}">/100</span>
+  </div>
+  <span class="adv-level-pill pill-{rpt.adversity_level}">{rpt.adversity_level}</span>
+</div>""", unsafe_allow_html=True)
+
+                with stat_col:
+                    st.markdown(f"""
+<div class="adv-stat-row">
+  <div class="adv-stat">
+    <div class="adv-stat-num s-CRITICAL">{rpt.critical_count}</div>
+    <div class="adv-stat-lbl">CRITICAL</div>
+  </div>
+  <div class="adv-stat">
+    <div class="adv-stat-num s-HIGH">{rpt.high_count}</div>
+    <div class="adv-stat-lbl">HIGH</div>
+  </div>
+  <div class="adv-stat">
+    <div class="adv-stat-num s-MEDIUM">{rpt.medium_count}</div>
+    <div class="adv-stat-lbl">MEDIUM</div>
+  </div>
+  <div class="adv-stat">
+    <div class="adv-stat-num s-LOW">{rpt.low_count}</div>
+    <div class="adv-stat-lbl">LOW</div>
+  </div>
+  <div class="adv-stat">
+    <div class="adv-stat-num" style="color:#C8D8E8">{rpt.total_sections}</div>
+    <div class="adv-stat-lbl">SECTIONS</div>
+  </div>
+  <div class="adv-stat">
+    <div class="adv-stat-num" style="color:#C8D8E8">{len(rpt.category_summary)}</div>
+    <div class="adv-stat-lbl">CATEGORIES</div>
+  </div>
+</div>""", unsafe_allow_html=True)
+
+                # ── Executive summary ─────────────────────────────────────────
+                st.markdown(
+                    f'<div class="exec-summary">📋 {rpt.executive_summary}</div>',
+                    unsafe_allow_html=True)
+
+                # ── Category heatmap grid ─────────────────────────────────────
+                if rpt.category_summary:
+                    st.markdown('<div class="section-label">Category breakdown</div>',
+                                unsafe_allow_html=True)
+                    cat_html = '<div class="cat-grid">'
+                    for cat_name, info in sorted(
+                            rpt.category_summary.items(),
+                            key=lambda x: x[1]["count"], reverse=True):
+                        cat_html += f"""
+<div class="cat-card" style="border-left-color:{info['color']}">
+  <div class="cat-card-top">
+    <span class="cat-name">{info['icon']} {cat_name}</span>
+    <span class="cat-count">{info['count']}</span>
+  </div>
+  <div class="cat-desc">{info['description'][:55]}…</div>
+</div>"""
+                    cat_html += "</div>"
+                    st.markdown(cat_html, unsafe_allow_html=True)
+
+                # ── Section-level drill-down ──────────────────────────────────
+                min_lvl_val = _level_order.get(adv_min_level, -1)
+                filtered_sections = [
+                    s for s in rpt.section_reports
+                    if _level_order.get(s.adversity_level, 0) >= max(min_lvl_val, 1)
+                ]
+
+                if filtered_sections:
+                    st.markdown(
+                        f'<div class="section-label">Flagged sections '
+                        f'({len(filtered_sections)} shown)</div>',
+                        unsafe_allow_html=True)
+
+                    for sec in filtered_sections[:20]:  # cap at 20 per doc
+                        lc_sec = _level_color(sec.adversity_level)
+                        active_matches = [m for m in sec.matches if not m.negated]
+                        neg_matches    = [m for m in sec.matches if m.negated]
+
+                        # Category tags for this section
+                        cat_tags = " ".join(
+                            f'<span class="chip" style="background:{ADVERSE_CATEGORIES[c]["color"]}18;'
+                            f'color:{ADVERSE_CATEGORIES[c]["color"]};border:1px solid {ADVERSE_CATEGORIES[c]["color"]}40">'
+                            f'{ADVERSE_CATEGORIES[c]["icon"]} {c}</span>'
+                            for c in sec.category_counts.keys()
+                        )
+
+                        st.markdown(f"""
+<div class="section-adv-card" style="border-left-color:{lc_sec}">
+  <div class="sa-header">
+    <div>
+      <div class="sa-title">{sec.section_title}</div>
+      <div class="sa-meta">Page {sec.page_num} &nbsp;·&nbsp;
+        {len(active_matches)} adverse match(es)
+        {f'&nbsp;·&nbsp; <span class="neg-badge">✓ {len(neg_matches)} negated</span>' if neg_matches else ''}
+      </div>
+    </div>
+    <div class="sa-right">
+      <span class="adv-level-pill pill-{sec.adversity_level}">{sec.adversity_level}</span>
+      <span style="font-size:11px;color:#9C8E7A">Score {sec.raw_score:.1f}</span>
+    </div>
+  </div>
+  <div style="margin:6px 0 8px">{cat_tags}</div>
+</div>""", unsafe_allow_html=True)
+
+                        # Show top 3 match snippets
+                        shown = sorted(active_matches, key=lambda m: m.severity, reverse=True)[:3]
+                        for match in shown:
+                            highlighted = _highlight_terms(match.context_snippet, [match])
+                            sev_color   = _level_color(
+                                "CRITICAL" if match.severity>=5 else
+                                "HIGH" if match.severity>=4 else
+                                "MEDIUM" if match.severity>=3 else "LOW")
+                            st.markdown(
+                                f'<div class="match-snippet">'
+                                f'<span style="font-size:10px;font-weight:700;color:{sev_color};'
+                                f'text-transform:uppercase;letter-spacing:0.5px">'
+                                f'{match.category} · Severity {match.severity}/5</span><br>'
+                                f'{highlighted}</div>',
+                                unsafe_allow_html=True)
+
+        # ── Category deep-dive selector ───────────────────────────────────────
+        st.markdown('<div class="section-label">Deep-dive by category</div>',
+                    unsafe_allow_html=True)
+        all_cats_found = sorted({
+            cat for r in reports_list
+            for cat in r.category_summary.keys()
+        })
+        if all_cats_found:
+            dd_cat = st.selectbox(
+                "Select a category to see all matches across documents",
+                ["— pick a category —"] + all_cats_found,
+                key="adv_deepdive_cat"
+            )
+            if dd_cat and dd_cat != "— pick a category —":
+                cat_info = ADVERSE_CATEGORIES[dd_cat]
+                st.markdown(
+                    f'<div class="exec-summary" style="border-left-color:{cat_info["color"]}">'
+                    f'{cat_info["icon"]} <strong>{dd_cat}</strong> — '
+                    f'{cat_info["description"]}</div>',
+                    unsafe_allow_html=True)
+                for rpt in reports_list:
+                    if dd_cat not in rpt.category_summary:
+                        continue
+                    st.markdown(f"**{rpt.display_name}**")
+                    for sec in rpt.section_reports:
+                        cat_matches = [m for m in sec.matches
+                                       if m.category == dd_cat and not m.negated]
+                        if not cat_matches:
+                            continue
+                        for m in cat_matches[:3]:
+                            highlighted = _highlight_terms(m.context_snippet, [m])
+                            st.markdown(
+                                f'<div class="match-snippet">'
+                                f'<small style="color:#9C8E7A">{sec.section_title} · p.{sec.page_num}</small><br>'
+                                f'{highlighted}</div>',
+                                unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────
 # DOCUMENTS TAB
