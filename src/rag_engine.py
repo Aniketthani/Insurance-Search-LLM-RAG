@@ -614,7 +614,18 @@ class OpenAILLM:
             raise ValueError(
                 "No OpenAI API key provided. Pass api_key= or set OPENAI_API_KEY.")
 
-        self.client         = _OpenAI(api_key=resolved_key)
+        try:
+            self.client = _OpenAI(api_key=resolved_key)
+        except TypeError as e:
+            if "proxies" in str(e):
+                import httpx as _httpx
+                self.client = _OpenAI(
+                    api_key=resolved_key,
+                    http_client=_httpx.Client()
+                )
+            else:
+                raise
+
         self.model          = model
         self.temperature    = temperature
         self.max_tokens     = max_tokens
