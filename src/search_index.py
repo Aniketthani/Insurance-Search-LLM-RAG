@@ -583,10 +583,14 @@ class InsuranceHybridSearchIndex:
                 r.phrase_score = self.PHRASE_BONUS
                 r.rrf_score   += self.PHRASE_BONUS
 
-        # Metadata filters
+        # Metadata filters — match against display_name (what the dropdown shows)
+        # OR doc_name (internal id) so both work correctly.
         if doc_filter or lob_filter:
             fused = [r for r in fused
-                     if (not doc_filter or r.chunk.doc_name == doc_filter)
+                     if (not doc_filter or
+                         self._name_map.get(r.chunk.chunk_id, r.chunk.doc_name) == doc_filter or
+                         r.chunk.doc_name == doc_filter or
+                         doc_filter.lower() in self._name_map.get(r.chunk.chunk_id, "").lower())
                      and (not lob_filter or r.chunk.lob == lob_filter)]
 
         fused = fused[:top_k * 2]
