@@ -158,15 +158,31 @@ class InsuranceRAGEngine:
         groundedness = self._groundedness_score(answer, results)
         passed = len(warnings) == 0
 
-        # Detect "no reference found" responses
-        no_ref_phrases = [
+        # Detect TRUE no-reference responses.
+        # Rules:
+        #   1. The answer must start with or predominantly contain a refusal phrase.
+        #   2. "Note: Complete information..." at the END of an answer is NOT a refusal.
+        #   3. Only flag if the answer is short (< 300 chars) OR starts with the refusal.
+        _ans_lower   = answer.lower().strip()
+        _ans_short   = len(answer.strip()) < 300
+        _hard_no_ref = [
+            "⚠ no reference found",
             "no reference found",
-            "not present in the indexed",
+            "not present in the indexed documents",
+            "no relevant documents found",
+            "no information found in the indexed",
+        ]
+        _soft_no_ref = [
             "not found in the indexed",
             "cannot be confirmed from the provided",
-            "no relevant documents found",
+            "complete information on this topic was not found",
+            "not mentioned in the provided",
         ]
-        no_reference = any(p in answer.lower() for p in no_ref_phrases)
+        # Hard match: answer starts with a refusal → definitely no reference
+        _hard_match = any(_ans_lower.startswith(p) for p in _hard_no_ref)
+        # Soft match: only flag if answer is short (no real content before the note)
+        _soft_match = _ans_short and any(p in _ans_lower for p in _soft_no_ref)
+        no_reference = _hard_match or _soft_match
 
         # Guardrail detail dict for UI display
         guardrail_detail = {

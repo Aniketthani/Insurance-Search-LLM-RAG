@@ -1475,7 +1475,19 @@ with tab_search:
         gs         = resp.groundedness_score
 
         # No reference found banner
-        if resp.no_reference_found:
+        # Only show when: (a) no_reference_found is True AND
+        #                 (b) there is no real LLM answer (answer is empty or context-only format)
+        _REFUSAL_STARTS = [
+            "⚠ no reference found", "no reference found",
+            "not present in the indexed", "⚠️ no reference",
+        ]
+        _has_real_answer = (
+            bool(resp.answer) and
+            not resp.answer.startswith("Query:") and
+            len(resp.answer.strip()) > 60 and
+            not any(resp.answer.strip().lower().startswith(p) for p in _REFUSAL_STARTS)
+        )
+        if resp.no_reference_found and not _has_real_answer:
             st.markdown("""<div class="no-ref-box">
   <span class="nr-icon">⚠</span>
   <strong>No Reference Found</strong> — The LLM could not find relevant information
@@ -1510,14 +1522,41 @@ with tab_search:
 
         # LLM answer
         if resp.answer and not resp.answer.startswith("Query:"):
-            box_cls   = "llm-box" if resp.guardrail_passed else "llm-box warn"
-            lbl_cls   = "llm-label" if resp.guardrail_passed else "llm-label warn"
-            prov      = ("Groq" if groq_enabled else "OpenAI" if openai_enabled else "LLM")
-            txt       = resp.answer.replace("<","&lt;").replace(">","&gt;").replace("\n","<br>")
+            # Split main answer from "Note:" qualifier if present
+            _full_answer = resp.answer.strip()
+            _note_phrases = [
+                "Note: Complete information",
+                "Note: complete information",
+                "complete information on this topic was not found",
+            ]
+            _note_text = ""
+            _main_answer = _full_answer
+            for _np in _note_phrases:
+                if _np.lower() in _full_answer.lower():
+                    _parts = _full_answer.split(_np, 1) if _np in _full_answer else                              _full_answer.lower().split(_np.lower(), 1)
+                    # Reconstruct using original case position
+                    _split_idx = _full_answer.lower().find(_np.lower())
+                    if _split_idx > 0:
+                        _main_answer = _full_answer[:_split_idx].strip().rstrip(".")
+                        _note_text   = _full_answer[_split_idx:].strip()
+                    break
+
+            box_cls = "llm-box" if resp.guardrail_passed else "llm-box warn"
+            lbl_cls = "llm-label" if resp.guardrail_passed else "llm-label warn"
+            prov    = ("Groq" if groq_enabled else "OpenAI" if openai_enabled else "LLM")
+            main_html = _main_answer.replace("<","&lt;").replace(">","&gt;").replace("\n","<br>")
+            note_html = ""
+            if _note_text:
+                nt = _note_text.replace("<","&lt;").replace(">","&gt;")
+                note_html = (f'''<div style="margin-top:10px;padding:8px 12px;'''
+                             f'''background:#FFFBEB;border-left:3px solid #F59E0B;'''
+                             f'''border-radius:0 6px 6px 0;font-size:12px;color:#92400E">'''
+                             f'''📋 {nt}</div>''')
             st.markdown(f"""
 <div class="{box_cls}">
   <div class="{lbl_cls}">◆ {prov} Answer</div>
-  <div class="llm-text">{txt}</div>
+  <div class="llm-text">{main_html}</div>
+  {note_html}
 </div>""", unsafe_allow_html=True)
             for w in resp.guardrail_warnings: st.warning(w)
 
