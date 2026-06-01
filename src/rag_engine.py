@@ -434,7 +434,18 @@ class GroqLLM:
                 "the GROQ_API_KEY environment variable."
             )
 
-        self.client         = Groq(api_key=resolved_key)
+        try:
+            self.client = Groq(api_key=resolved_key)
+        except TypeError as e:
+            if "proxies" in str(e):
+                # Older groq SDK passes 'proxies' to httpx which removed it.
+                # Patch: instantiate with only the api_key kwarg via httpx directly.
+                import httpx
+                http_client = httpx.Client()
+                self.client = Groq(api_key=resolved_key, http_client=http_client)
+            else:
+                raise
+
         self.model          = model
         self.temperature    = temperature
         self.max_tokens     = max_tokens

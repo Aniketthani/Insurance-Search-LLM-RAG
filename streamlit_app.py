@@ -10,8 +10,11 @@ Beautiful, professional design:
 
 import os, sys, tempfile, time, re
 
-# ── Must be set before ANY chromadb import (fixes Python 3.11+ / protobuf conflict)
+# ── Must be set before ANY chromadb import ──────────────────────────────────
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("CHROMA_TELEMETRY", "False")
+os.environ.setdefault("POSTHOG_DISABLED", "1")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamlit as st
@@ -1090,7 +1093,7 @@ with st.sidebar:
     # ── Embedding ──
     st.markdown('<div class="sb-card"><div class="sb-card-title">🧠 Embedding Engine</div>',
                 unsafe_allow_html=True)
-    embedder_choice = st.selectbox("Engine", list(EMBEDDER_OPTIONS.keys()),
+    embedder_choice = st.selectbox("Embedding engine", list(EMBEDDER_OPTIONS.keys()),
         label_visibility="collapsed",
         format_func=lambda k: {"tfidf":"TF-IDF  (offline)",
                                "bge":"BGE-large  (neural)",
@@ -1121,7 +1124,7 @@ with st.sidebar:
     # ── LLM ──
     st.markdown('<div class="sb-card"><div class="sb-card-title">🤖 Language Model</div>',
                 unsafe_allow_html=True)
-    llm_choice = st.radio("Provider", ["None","Groq","OpenAI"], horizontal=True,
+    llm_choice = st.radio("LLM Provider", ["None","Groq","OpenAI"], horizontal=True,
                           label_visibility="collapsed",
                           key="llm_provider_radio")
     groq_key, groq_model     = "", GroqLLM.DEFAULT_MODEL
@@ -1408,7 +1411,7 @@ with tab_search:
 
     st.markdown("")
     prefill = st.session_state.pop("prefill_query", "")
-    query   = st.text_input("query", value=prefill,
+    query   = st.text_input("Insurance query", value=prefill,
                              placeholder="Ask anything about your insurance documents…",
                              label_visibility="collapsed")
 
@@ -1509,7 +1512,7 @@ with tab_search:
                 for pc in resp.parent_contexts:
                     dn = getattr(pc,"display_name",pc.doc_name)
                     st.markdown(f"**{dn}  ·  {pc.section_title}**")
-                    st.text_area("", value=pc.raw_text[:1000]+
+                    st.text_area(f"Section content", value=pc.raw_text[:1000]+
                                  ("…" if len(pc.raw_text)>1000 else ""),
                                  height=130, disabled=True,
                                  label_visibility="collapsed",

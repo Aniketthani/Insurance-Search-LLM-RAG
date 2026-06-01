@@ -24,9 +24,11 @@ from src.chunker import Chunk
 
 console = Console()
 
-# ── Protobuf compatibility fix (Python 3.11 + protobuf 3.20.x) ───────────
-# Must be set BEFORE chromadb is imported anywhere.
+# ── Compatibility env vars — must be set BEFORE chromadb is imported ────────
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")          # disable chromadb telemetry
+os.environ.setdefault("CHROMA_TELEMETRY", "False")              # older chromadb key
+os.environ.setdefault("POSTHOG_DISABLED", "1")                  # disable posthog (chromadb uses it)
 
 # ── ChromaDB persistent client ────────────────────────────────────────────
 import chromadb
@@ -176,14 +178,25 @@ class Qwen3VLEmbedder:
 
 EMBEDDER_OPTIONS = {
     "tfidf":   "TF-IDF (offline, no GPU)",
-    "bge":     "BAAI/bge-large-en-v1.5",
-    "qwen3vl": "Qwen3-VL-8B (visual PDFs)",
+    "bge":     "BAAI/bge-large-en-v1.5 (needs local install)",
+    "qwen3vl": "Qwen3-VL-8B (needs GPU + local install)",
 }
 
 def build_embedder(t="tfidf", device="auto"):
-    if t == "tfidf":   return TFIDFEmbedder()
-    if t == "bge":     return SentenceTransformerEmbedder()
-    if t == "qwen3vl": return Qwen3VLEmbedder(device)
+    if t == "tfidf":
+        return TFIDFEmbedder()
+    if t == "bge":
+        try:
+            return SentenceTransformerEmbedder()
+        except ImportError:
+            console.print("[yellow]sentence-transformers not installed — falling back to TF-IDF[/]")
+            return TFIDFEmbedder()
+    if t == "qwen3vl":
+        try:
+            return Qwen3VLEmbedder(device)
+        except ImportError:
+            console.print("[yellow]torch/transformers not installed — falling back to TF-IDF[/]")
+            return TFIDFEmbedder()
     raise ValueError(t)
 
 
