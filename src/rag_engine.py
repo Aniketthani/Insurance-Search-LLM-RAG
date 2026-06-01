@@ -580,13 +580,28 @@ OPENAI_MODELS = {
     "gpt-3.5-turbo":       "GPT-3.5 Turbo — fastest, lowest cost",
 }
 
-# OpenAI context budgets (tokens → chars, conservative)
-OPENAI_CONTEXT_BUDGET = {
-    "gpt-4o":        int(100_000 * 3.8),
-    "gpt-4o-mini":   int(100_000 * 3.8),
-    "gpt-4-turbo":   int(120_000 * 3.8),
-    "gpt-3.5-turbo": int(14_000  * 3.8),
+# OpenAI context budgets — based on Tier-1 TPM limits, not model context window.
+# Tier-1 is what most new accounts have. Adjust OPENAI_TIER below if you have Tier-2+.
+# Formula: (TPM_limit - 1500 reserved for answer+overhead) * 3.8 chars/token
+OPENAI_TIER = 1   # change to 2 or 3 if you have a higher tier account
+
+_OPENAI_TPM = {
+    # model: (tier1_tpm, tier2_tpm, tier3_tpm)
+    "gpt-4o":        (30_000,  450_000, 800_000),
+    "gpt-4o-mini":   (200_000, 2_000_000, 4_000_000),
+    "gpt-4-turbo":   (30_000,  450_000, 800_000),
+    "gpt-3.5-turbo": (90_000,  1_000_000, 2_000_000),
 }
+
+def _openai_budget(model: str) -> int:
+    tpm_tiers = _OPENAI_TPM.get(model, (30_000, 450_000, 800_000))
+    idx       = min(OPENAI_TIER - 1, len(tpm_tiers) - 1)
+    tpm       = tpm_tiers[idx]
+    # Reserve 1500 tokens for answer + system prompt overhead
+    safe_tokens = max(tpm - 1_500, 1_000)
+    return int(safe_tokens * 3.8)
+
+OPENAI_CONTEXT_BUDGET = {m: _openai_budget(m) for m in _OPENAI_TPM}
 
 
 class OpenAILLM:
@@ -630,7 +645,9 @@ class OpenAILLM:
         self.temperature    = temperature
         self.max_tokens     = max_tokens
         self.name           = f"OpenAI / {model}"
-        self.context_budget = OPENAI_CONTEXT_BUDGET.get(model, int(14_000 * 3.8))
+        self.context_budget = OPENAI_CONTEXT_BUDGET.get(model, _openai_budget(model))
+        console.print(f"  [dim]Context budget: {self.context_budget:,} chars "
+                      f"≈ {self.context_budget//4:,} tokens (Tier {OPENAI_TIER})[/]")
 
         console.print(f"[green]✓ OpenAI LLM ready: {self.name}  "
                       f"| context budget: {self.context_budget:,} chars[/]")
@@ -685,8 +702,21 @@ class OpenAILLM:
             )
             return resp.choices[0].message.content.strip()
         except Exception as e:
+            err = str(e)
+            # ── Rate limit / TPM exceeded ────────────────────────────
+            if "429" in err or "rate_limit_exceeded" in err or "tokens per min" in err.lower():
+                return (
+                    "OpenAI rate limit reached — context too large for your TPM limit. "
+                    "Switch to gpt-4o-mini (200k TPM) or reduce Results per query to 3."
+                )
+            # ── Auth / invalid key ───────────────────────────────────
+            if "401" in err or "invalid_api_key" in err or "Incorrect API key" in err:
+                return "⚠️ Invalid OpenAI API key. Check your key at platform.openai.com/api-keys"
+            # ── Quota exhausted ──────────────────────────────────────
+            if "insufficient_quota" in err or "quota" in err.lower():
+                return "⚠️ OpenAI quota exhausted. Add credits at platform.openai.com/account/billing"
             console.print(f"[red]OpenAI API error: {e}[/]")
-            return f"[OpenAI API error: {e}]"
+            return f"⚠️ OpenAI error: {err[:300]}"
 
     def test_connection(self) -> bool:
         try:
