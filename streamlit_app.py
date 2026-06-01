@@ -1115,7 +1115,21 @@ with st.sidebar:
     # ── Filter ──
     st.markdown('<div class="sb-card"><div class="sb-card-title">🔎 Filter</div>',
                 unsafe_allow_html=True)
-    doc_filter_input = st.text_input("By document name", placeholder="e.g. Life Term Policy")
+
+    # Build document name list from indexed docs
+    _doc_names = ["All documents"] + sorted({
+        d["display_name"]
+        for d in st.session_state.get("indexed_docs", [])
+        if d.get("display_name")
+    })
+    _doc_sel = st.selectbox(
+        "Filter by document",
+        options=_doc_names,
+        index=0,
+        key="doc_filter_select",
+    )
+    doc_filter_input = None if _doc_sel == "All documents" else _doc_sel
+
     lob_sel    = st.selectbox("By line of business",
                               ["All","Life Insurance","P&C","Reinsurance","Compliance"])
     lob_filter = None if lob_sel=="All" else lob_sel
@@ -1421,7 +1435,30 @@ with tab_search:
         st.session_state.last_response = None; st.rerun()
 
     if (do_search or query) and query.strip():
-        df_in = doc_filter_input.strip() or None
+        # ── Auto-apply LLM if key is present but engine still in context_only mode ──
+        # This means user entered a key without clicking "Apply LLM" — activate it now.
+        _engine = st.session_state.engine
+        if _engine.context_only or _engine.llm_fn is None:
+            _auto_llm = None
+            if groq_enabled and groq_key.strip():
+                try:
+                    _auto_llm = GroqLLM(api_key=groq_key.strip(), model=groq_model)
+                except Exception:
+                    pass
+            elif openai_enabled and openai_key.strip():
+                try:
+                    _auto_llm = OpenAILLM(api_key=openai_key.strip(), model=openai_model)
+                except Exception:
+                    pass
+            if _auto_llm:
+                _engine.llm_fn       = _auto_llm
+                _engine.context_only = False
+                st.session_state["active_llm_label"] = (
+                    f"Groq · {groq_model}"     if groq_enabled else
+                    f"OpenAI · {openai_model}" if openai_enabled else "No LLM"
+                )
+
+        df_in = doc_filter_input if doc_filter_input and doc_filter_input != "All documents" else None
         with st.spinner("Searching your documents…"):
             t0   = time.time()
             resp = st.session_state.engine.query(
