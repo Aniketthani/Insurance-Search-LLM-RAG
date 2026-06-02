@@ -501,7 +501,13 @@ class AdverseClauseScanner:
 
     def scan_chunk(self, chunk: Chunk, display_name: str = "") -> SectionAdversityReport:
         """Scan a single chunk and return a section adversity report."""
-        text = chunk.raw_text
+        # Strip HTML tags from raw_text before scanning
+        # Some PDFs (especially ACORD forms and scanned documents) contain
+        # HTML/XML fragments in their extracted text layer.
+        _raw = chunk.raw_text or ""
+        text = re.sub(r"<[^>]{1,80}>", " ", _raw)
+        text = re.sub(r"&[a-zA-Z]{2,8};", "", text)
+        text = re.sub(r"\s{2,}", " ", text).strip()
         matches = self._find_adverse_matches(text)
 
         category_counts: Dict[str, int] = {}
@@ -676,7 +682,12 @@ class AdverseClauseScanner:
                 # Extract context window
                 ctx_start = max(0, pos - 100)
                 ctx_end   = min(len(text), pos + 100)
-                snippet   = text[ctx_start:ctx_end].strip()
+                raw_snip  = text[ctx_start:ctx_end].strip()
+                # Strip any HTML tags/entities that may exist in extracted PDF text
+                # (some PDFs have embedded XML/HTML markup in their text layer)
+                snippet   = re.sub(r"<[^>]{1,80}>", " ", raw_snip)
+                snippet   = re.sub(r"&[a-zA-Z]{2,8};", "", snippet)
+                snippet   = re.sub(r"\s{2,}", " ", snippet).strip()
 
                 # Negation check in surrounding window
                 neg_start = max(0, pos - NEGATION_WINDOW)
