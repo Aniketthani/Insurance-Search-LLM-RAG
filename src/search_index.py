@@ -338,6 +338,22 @@ class InsuranceHybridSearchIndex:
 
     # ── Persistence helpers ───────────────────────────────────────────────
 
+    @staticmethod
+    def _sanitise_stored_text(t: str) -> str:
+        """
+        Strip any HTML tags and entities from text read back from ChromaDB.
+        A previous buggy session may have stored rendered HTML markup inside
+        text fields. Clean on read so stale data never causes display issues,
+        without requiring a manual clear+rebuild.
+        """
+        import re as _re
+        if not t:
+            return t
+        cleaned = _re.sub(r"<[^>]{1,120}>", " ", t)       # <div class="...">, </div>…
+        cleaned = _re.sub(r"&[a-zA-Z]{2,8};", " ", cleaned)  # &lt; &amp; &nbsp;…
+        cleaned = _re.sub(r"[ 	]{3,}", "  ", cleaned)        # collapse whitespace runs
+        return cleaned.strip()
+
     def _load_from_chroma(self):
         """Reload chunks stored in ChromaDB on startup."""
         try:
@@ -355,8 +371,8 @@ class InsuranceHybridSearchIndex:
             for meta in metas:
                 chunk = _Chunk(
                     chunk_id      = meta["chunk_id"],
-                    text          = meta.get("text", ""),
-                    raw_text      = meta.get("raw_text", ""),
+                    text          = self._sanitise_stored_text(meta.get("text", "")),
+                    raw_text      = self._sanitise_stored_text(meta.get("raw_text", "")),
                     chunk_type    = meta.get("chunk_type", "child"),
                     parent_id     = meta.get("parent_id") or None,
                     doc_name      = meta.get("doc_name", ""),
