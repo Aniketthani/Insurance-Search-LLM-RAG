@@ -583,8 +583,37 @@ class AdverseClauseScanner:
                 cat_summary[cat]["sections"].append(sr.section_title)
 
         # Normalise score to 0–100
-        max_possible  = len(child_chunks) * 5 * 3  # 3 critical hits per section max
-        overall_score = min(100.0, (total_score / max(max_possible, 1)) * 100)
+        #
+        # OLD formula (broken): max_possible = total_sections × 5 × 3
+        #   → denominator scales with doc size, so large docs always score low.
+        #   A 256-section doc with 8 critical hits scores ~4/100; a 10-section doc
+        #   with the same hits scores ~100/100. That is not meaningful.
+        #
+        # NEW formula: score is based only on the AFFECTED sections.
+        #   Step 1 — section hit-rate:  what % of sections have any adverse content?
+        #            (rewards breadth — a doc where 50% of sections are affected is worse
+        #             than one where 5% are)
+        #   Step 2 — severity multiplier: average severity of affected sections,
+        #            normalised to the 1–5 scale, so a doc full of severity-5 hits
+        #            scores higher than one full of severity-1 hits.
+        #   Combined: score = hit_rate_pct × severity_ratio
+        #            This gives 0–100 that is completely size-neutral.
+
+        adverse_sections = [sr for sr in section_reports if sr.adversity_level != "CLEAN"]
+        n_total    = max(len(child_chunks), 1)
+        n_adverse  = len(adverse_sections)
+
+        if n_adverse == 0:
+            overall_score = 0.0
+        else:
+            hit_rate_pct  = (n_adverse / n_total) * 100          # 0–100
+            avg_severity  = (
+                sum(sr.raw_score for sr in adverse_sections) / n_adverse
+            )
+            # Cap avg_severity at 15 (= 3 severity-5 hits per section, same
+            # conceptual ceiling as before but now applied only to affected sections)
+            severity_ratio = min(avg_severity / 15.0, 1.0)       # 0–1
+            overall_score  = hit_rate_pct * severity_ratio        # 0–100
 
         # Severity counts
         crit_c = sum(1 for s in section_reports if s.adversity_level == "CRITICAL")
