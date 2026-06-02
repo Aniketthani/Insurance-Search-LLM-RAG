@@ -2138,23 +2138,59 @@ with tab_adv:
 
                         import html as _html_mod
                         _safe_title = _html_mod.escape(sec.section_title, quote=False)
-                        st.markdown(f"""
-<div class="section-adv-card" style="border-left-color:{lc_sec}">
-  <div class="sa-header">
-    <div>
-      <div class="sa-title">{_safe_title}</div>
-      <div class="sa-meta">Page {sec.page_num} &nbsp;·&nbsp;
-        {len(active_matches)} adverse match(es)
-        {f'&nbsp;·&nbsp; <span class="neg-badge">✓ {len(neg_matches)} negated</span>' if neg_matches else ''}
-      </div>
-    </div>
-    <div class="sa-right">
-      <span class="adv-level-pill pill-{sec.adversity_level}">{sec.adversity_level}</span>
-      <span style="font-size:11px;color:#9C8E7A">Score {sec.raw_score:.1f}</span>
-    </div>
-  </div>
-  <div style="margin:6px 0 8px">{cat_tags}</div>
-</div>""", unsafe_allow_html=True)
+
+                        # Build section card using st.container + native widgets
+                        # instead of a single unsafe_allow_html block.
+                        # This avoids Streamlit's HTML parser choking on emoji,
+                        # 8-char hex colors, or special chars in category labels.
+                        with st.container():
+                            _neg_note = (f"  ·  ✓ {len(neg_matches)} negated"
+                                         if neg_matches else "")
+                            st.markdown(
+                                f'<div class="section-adv-card" '
+                                f'style="border-left-color:{lc_sec};'
+                                f'background:#fff;border:1px solid #E8E0D0;'
+                                f'border-radius:10px;padding:14px 18px;margin-bottom:10px;">'
+                                f'<div style="display:flex;justify-content:space-between;'
+                                f'align-items:flex-start;gap:12px;margin-bottom:6px;">'
+                                f'<div>'
+                                f'<div style="font-size:14px;font-weight:600;color:#1C2B3A">'
+                                f'{_safe_title}</div>'
+                                f'<div style="font-size:12px;color:#9C8E7A">'
+                                f'Page {sec.page_num} &nbsp;·&nbsp; '
+                                f'{len(active_matches)} adverse match(es){_html_mod.escape(_neg_note)}'
+                                f'</div></div>'
+                                f'<div style="display:flex;flex-direction:column;'
+                                f'align-items:flex-end;gap:4px;flex-shrink:0;">'
+                                f'<span class="adv-level-pill pill-{sec.adversity_level}">'
+                                f'{sec.adversity_level}</span>'
+                                f'<span style="font-size:11px;color:#9C8E7A">'
+                                f'Score {sec.raw_score:.1f}</span>'
+                                f'</div></div>',
+                                unsafe_allow_html=True
+                            )
+                            # Category chips — one per chip call, no emoji in HTML
+                            if sec.category_counts:
+                                _chip_parts = []
+                                for _c in sec.category_counts.keys():
+                                    _col = ADVERSE_CATEGORIES[_c]["color"]
+                                    _lbl = _html_mod.escape(_c, quote=False)
+                                    _chip_parts.append(
+                                        f'<span style="font-size:11px;font-weight:600;'
+                                        f'padding:3px 10px;border-radius:6px;'
+                                        f'background:{_col}20;color:{_col};'
+                                        f'border:1px solid {_col}60;'
+                                        f'display:inline-block;margin:2px 4px 2px 0">'
+                                        f'{_lbl}</span>'
+                                    )
+                                st.markdown(
+                                    '<div style="margin:4px 0 2px">' +
+                                    " ".join(_chip_parts) + '</div>'
+                                    + '</div>',
+                                    unsafe_allow_html=True
+                                )
+                            else:
+                                st.markdown('</div>', unsafe_allow_html=True)
 
                         # Show top 3 match snippets
                         shown = sorted(active_matches, key=lambda m: m.severity, reverse=True)[:3]
