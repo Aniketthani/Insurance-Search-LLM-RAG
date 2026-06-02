@@ -1917,16 +1917,24 @@ with tab_adv:
                 "MEDIUM":"#EAB308","LOW":"#22C55E","CLEAN":"#6B7280"}.get(level,"#6B7280")
 
     def _highlight_terms(text, matches):
-        """Highlight matched adverse terms in snippet text."""
-        result = text
-        # Sort matches by length descending to avoid partial replacements
+        """
+        Highlight matched adverse terms in snippet text.
+        IMPORTANT: HTML-escape the raw text FIRST before injecting any
+        span tags — otherwise < > characters in source text render as
+        HTML tags and expose internal markup in the UI.
+        """
+        import html as _html
+        # Step 1: escape all HTML special characters in the raw source text
+        result = _html.escape(text, quote=False)
+        # Step 2: now safely inject highlight spans (these are trusted HTML)
         sorted_terms = sorted({m.term for m in matches if not m.negated},
                                key=len, reverse=True)
-        for term in sorted_terms[:8]:  # limit highlights
-            escaped = re.escape(term)
+        for term in sorted_terms[:8]:
+            escaped_term  = re.escape(_html.escape(term, quote=False))
+            display_term  = _html.escape(term, quote=False)
             result = re.sub(
-                escaped,
-                f'<span class="match-term-highlight">{term}</span>',
+                escaped_term,
+                f'<span class="match-term-highlight">{display_term}</span>',
                 result, flags=re.IGNORECASE, count=2)
         return result
 
@@ -2128,11 +2136,13 @@ with tab_adv:
                             for c in sec.category_counts.keys()
                         )
 
+                        import html as _html_mod
+                        _safe_title = _html_mod.escape(sec.section_title, quote=False)
                         st.markdown(f"""
 <div class="section-adv-card" style="border-left-color:{lc_sec}">
   <div class="sa-header">
     <div>
-      <div class="sa-title">{sec.section_title}</div>
+      <div class="sa-title">{_safe_title}</div>
       <div class="sa-meta">Page {sec.page_num} &nbsp;·&nbsp;
         {len(active_matches)} adverse match(es)
         {f'&nbsp;·&nbsp; <span class="neg-badge">✓ {len(neg_matches)} negated</span>' if neg_matches else ''}
@@ -2154,11 +2164,13 @@ with tab_adv:
                                 "CRITICAL" if match.severity>=5 else
                                 "HIGH" if match.severity>=4 else
                                 "MEDIUM" if match.severity>=3 else "LOW")
+                            import html as _hesc
+                            _safe_cat = _hesc.escape(match.category, quote=False)
                             st.markdown(
                                 f'<div class="match-snippet">'
                                 f'<span style="font-size:10px;font-weight:700;color:{sev_color};'
                                 f'text-transform:uppercase;letter-spacing:0.5px">'
-                                f'{match.category} · Severity {match.severity}/5</span><br>'
+                                f'{_safe_cat} · Severity {match.severity}/5</span><br>'
                                 f'{highlighted}</div>',
                                 unsafe_allow_html=True)
 
