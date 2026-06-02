@@ -2159,12 +2159,15 @@ with tab_adv:
                         # Show top 3 match snippets
                         shown = sorted(active_matches, key=lambda m: m.severity, reverse=True)[:3]
                         for match in shown:
-                            highlighted = _highlight_terms(match.context_snippet, [match])
+                            import html as _hesc
+                            # Always escape the raw snippet first, then highlight
+                            _clean_snip = re.sub(r"<[^>]{1,80}>", " ", match.context_snippet)
+                            _clean_snip = re.sub(r"&[a-zA-Z]{2,8};", "", _clean_snip).strip()
+                            highlighted = _highlight_terms(_clean_snip, [match])
                             sev_color   = _level_color(
                                 "CRITICAL" if match.severity>=5 else
                                 "HIGH" if match.severity>=4 else
                                 "MEDIUM" if match.severity>=3 else "LOW")
-                            import html as _hesc
                             _safe_cat = _hesc.escape(match.category, quote=False)
                             st.markdown(
                                 f'<div class="match-snippet">'
